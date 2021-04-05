@@ -1,0 +1,811 @@
+---
+title: "Midterm-2 Project Portion - Instruction"
+author: "First and last name: Ryan Hilton //
+          Pair's first and last name: Avery Girsky"
+date: "Submission Date: April 8th, 2021"
+#output: pdf_document
+output:
+  pdf_document: default
+  df_print: paged
+  #html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, tidy=TRUE, tidy.opts=list(width.cutoff=50))
+```
+
+***
+
+## Midterm-2 Project Instruction
+
+In `Midterm-1 Project`, you have built predictive models using train and test data sets about college students' academic performances and retention status. You fitted four regression models on \textbf{Term.GPA} and four classification models on \textbf{Persistence.NextYear}. the lowest test score of $MSE_{test}$ achieved on the regression problem was $.991$ using a simple linear regression, and the highest `accuracy` and `F1` scores obtained were $91.15$% and $95.65$%, respectively, with the fit of a multiple logistic regression model (equivalently, LDA and QDA give similar performances). Let's call these scores as baseline test scores.
+
+In `Midterm-2 Project`, you will use tree-based methods (trees, random forests, boosting) and artificial neural networks (Modules 5, 6, and 7) to improve the baseline results. There is no any answer key for this midterm: your efforts and justifications will be graded, pick one favorite optimal tree-based method and one optimal ANN architecture for each regression and classification problem (a total of two models for classification and two models for regression), and fit and play with hyperparameters until you get satisfactory improvements in the test data set.
+
+Keep in mind that $Persistence.NextYear$ is not included in as predictor the regression models so use all the predictors except that on the regression. For the classification models, use all the predictors including the term gpa.
+
+First of all, combine the train and test data sets, create dummies for all categorical variables, which include `Entry_Term`, `Gender`, and `Race_Ethc_Visa`, so the data sets are ready to be separated again as train and test. (Expect help on this portion!) You will be then ready to fit models. 
+
+
+***
+
+\section{A. Improving Regression Models - 15 pts}
+
+- Explore tree-based methods, choose the one that is your favorite and yielding optimal results, and then search for one optimal ANN architecture for the regression problem (so two models to report). Fit and make sophisticated decisions by justifying and writing precisely. Report `the test MSE` results in a comparative table along with the methods so the grader can capture all your efforts on building various models in one table.
+
+\section{B. Improving Classification Models - 20 pts}
+
+- Explore tree-based methods, choose the one that is your favorite and yielding optimal results, and then search for one optimal ANN architecture for the classification problem (so two models to report). Fit and make sophisticated decisions by justifying and writing precisely. Report `the test accuracy` and `the test F1` results in a comparative table along with the methods so the grader can capture all your efforts in one table.
+
+
+\section{C. Importance Analyses - 15 pts}
+
+- Part a. Perform an importance analysis on the best regression model: which three predictors are most important or effective to explain the response variable? Find the relationship and dependence of these predictors with the response variable. Include graphs and comments.
+
+- Part b. Perform an importance analysis on the best classification model: which three predictors are most important or effective to explain the response variable? Find the relationship and dependence of these predictors with the response variable. Include graphs and comments.
+
+- Part c. Write a conclusion paragraph. Evaluate overall what you have achieved. Did the baselines get improved? Why do you think the best model worked well or the models didn't work well? How did you handle issues? What could be done more to get `better` and `interpretable` results? Explain with technical terms.
+
+***
+
+\section{Project Evaluation}
+
+The submitted project report will be evaluated according to the following criteria: 
+
+\begin{enumerate}
+\item All models in the instruction used correctly 
+\item Completeness and novelty of the model fitting 
+\item Techniques and theorems of the methods used accurately
+\item Reflection of in-class lectures and discussions
+\item Achieved reasonable/high performances; insights obtained (patterns of variables)
+\item Clear and minimalist write-ups
+\end{enumerate}
+
+If the response is not full or not reflecting the correct answer as expected, you may still earn partial points. For each part or model, I formulated this `partial points` as this:
+
+- 20% of pts: little progress with some minor solutions; 
+- 40% of pts: major calculation mistake(s), but good work, ignored important pieces; 
+- 60-80% of pts: correct method used, but minor mistake(s). 
+
+Additionally, a student who will get the highest performances from both problems in the class (`minimum test MSE` from the regression model and `highest F1` from the classification model) will get a BONUS (up to +2 pts). Just follow up when you think you did good job!
+
+***
+
+\section{Tips}
+
+- `Term.gpa` is an aggregated gpa up until the current semester, however, this does not include this current semester. In the modeling of `gpa`, include all predictors except `persistent`.
+- The data shows the `N.Ws`, `N.DFs`, `N.As` as the number of courses withdrawn, D or Fs, A's respectively in the current semester.
+- Some rows were made synthetic so may not make sense: in this case, feel free to keep or remove.
+- It may be poor to find linear association between gpa and other predictors (don't include `persistent` in `gpa` modeling).
+- Scatterplot may mislead since it doesn't show the density.
+- You will use the test data set to asses the performance of the fitted models based on the train data set.
+- Implementing 5-fold cross validation method while fitting with train data set is strongly suggested.
+- You can use any packs (`caret`, `Superml`, `rpart`, `xgboost`, or [visit](https://cran.r-project.org/web/views/MachineLearning.html)  to search more) as long as you are sure what it does and clear to the grader.
+- Include helpful and compact plots with titles.
+- Keep at most 4 decimals to present numbers and the performance scores. 
+- When issues come up, try to solve and write up how you solve or can't solve.
+- Check this part for updates: the instructor puts here clarifications as asked.
+
+
+***
+
+\newpage
+
+
+
+## Your Solutions
+
+```{r, include = FALSE}
+library(ISLR) 
+library(MASS) 
+library(class) 
+library(kableExtra) 
+library(caret)
+library(tree) 
+library(randomForest)
+library(gbm)
+library(car)
+library(neuralnet)
+```
+
+```{r}
+train <- read.csv("StudentDataTrain.csv")
+test <- read.csv("StudentDataTest.csv")
+
+full.data = rbind(train, test)
+summary(full.data)
+```
+
+```{r}
+full.data$Gender <- ifelse(full.data$Gender == "Male", 1, 0) #male = 1, female = 0
+full.data$Race_Ethc_Visa <- ifelse(full.data$Race_Ethc_Visa == "Afram", 1, 
+                          ifelse(full.data$Race_Ethc_Visa == "Asian", 2,
+                          ifelse(full.data$Race_Ethc_Visa == "Hispanic", 3,
+                          ifelse(full.data$Race_Ethc_Visa == "Multi", 4, 0))))
+
+full.data$Entry_Term <- ifelse(full.data$Entry_Term == 2131, 0, 1) #2131 = 0, 2141 = 1
+```
+
+```{r}
+summary(full.data)
+```
+
+```{r}
+#when perc.withd is 1, perc.pass is always NA
+#turning perc.pass na values into -1
+#full.data$Perc.Pass = ifelse(is.na(full.data$Perc.Pass), 0, full.data$Perc.Pass) #might try 0
+full.data$Perc.Pass = ifelse(is.na(full.data$Perc.Pass), -1, full.data$Perc.Pass)
+cat("% Complete Cases Before NA Omition: ",sum(complete.cases(full.data)/nrow(full.data)))
+#full.data <- na.omit(full.data)
+```
+
+```{r}
+#, include = FALSE, eval = FALSE}
+#if we wanted to median imputate the rest of the values instead of omiting them
+#gender.na <- full.data[is.na(full.data$Gender),]
+#gender.na
+#gender.na$Gender <- median(full.data$Gender, na.rm=TRUE)
+#gender.na
+
+#HSGPA.na <- full.data[is.na(full.data$HSGPA),]
+#HSGPA.na
+#HSGPA.na$HSGPA <- median(full.data$HSGPA, na.rm=TRUE)
+#HSGPA.na
+
+#SAT_Total.na <- full.data[is.na(full.data$SAT_Total),]
+#SAT_Total.na
+#SAT_Total.na$SAT_Total <- median(full.data$SAT_Total, na.rm=TRUE)
+#SAT_Total.na
+
+full.data[is.na(full.data$Gender),]$Gender <- median(full.data$Gender, na.rm=TRUE)
+full.data[is.na(full.data$HSGPA),]$HSGPA <- median(full.data$HSGPA, na.rm=TRUE)
+full.data[is.na(full.data$SAT_Total),]$SAT_Total <- median(full.data$SAT_Total, na.rm=TRUE)
+```
+
+```{r}
+summary(full.data)
+```
+
+```{r}
+slr <- lm(Term.GPA~.-Persistence.NextYear-N.CourseTaken-N.RegisteredCourse-Perc.PassedEnrolledCourse,data = full.data)
+vif(slr)
+#Race_Ethc_Visa, Gender, HSGPA, SAT_Total, Entry_Term, N.Ws, N.DFs, N.As, N.PassedCourse, Perc.Pass, Perc.Withd, N.GraduateCourse, FullTimeStudent
+```
+
+```{r}
+full.data <- full.data[, c(1,2,3,4,5,9,10,11,12,15,16,17,18,8,13,14,6,7)] #last rows now response vars
+```
+
+```{r}
+names(full.data)
+data <- full.data[, c(1,2,3,4,5,6,7,8,9,10,11,12,13,17,18)] #getting rid of problem vars
+names(data)
+```
+```{r}
+dim(data)
+5900/7415
+6000/7415
+```
+
+```{r}
+normalize <- function(x) {
+  return ((x - min(x)) / (max(x) - min(x)))
+}
+```
+
+```{r}
+scaled.data <- as.data.frame(lapply(data, normalize))
+full.scaled.data <- as.data.frame(lapply(full.data, normalize))
+summary(scaled.data)
+```
+
+```{r}
+set.seed(99)
+rows <- sample(nrow(data))
+train = rows[1:5900]
+train.data = data[train,]
+test.data = data[-train,]
+train.data.sc <- scaled.data[train,]
+test.data.sc <- scaled.data[-train,]
+f.train.data = full.data[train,]
+f.test.data = full.data[-train,]
+f.train.data.sc = full.scaled.data[train,]
+f.test.data.sc = full.scaled.data[-train,]
+```
+
+```{r}
+#Summarize univariately
+summary(train.data) 
+summary(test.data) 
+
+#Dims
+dim(train.data) #5961x18
+dim(test.data) #1474x18
+
+#Response variables 
+#you may do this
+y1=train.data$Term.GPA #numerical
+y2=train.data$Persistence.NextYear #categorical: 0, 1
+#you may do this
+z1=test.data$Term.GPA #numerical
+z2=test.data$Persistence.NextYear #categorical: 0, 1
+
+y1.sc=train.data.sc$Term.GPA #numerical
+y2.sc=train.data.sc$Persistence.NextYear #categorical: 0, 1
+#you may do this
+z1.sc=test.data.sc$Term.GPA #numerical
+z2.sc=test.data.sc$Persistence.NextYear #categorical: 0, 1
+```
+
+```{r, include = FALSE, eval = FALSE}
+train$Gender <- ifelse(train$Gender == "Male", 1, 0) #male = 1, female = 0
+train$Race_Ethc_Visa <- ifelse(train$Race_Ethc_Visa == "Afram", 1, 
+                          ifelse(train$Race_Ethc_Visa == "Asian", 2,
+                          ifelse(train$Race_Ethc_Visa == "Hispanic", 3,
+                          ifelse(train$Race_Ethc_Visa == "Multi", 4, 0))))
+#afram = 1, asian = 2, hispanic = 3, multi = 4, white = 0
+
+test$Gender <- ifelse(test$Gender == "Male", 1, 0) #male = 1, female = 0
+test$Race_Ethc_Visa <- ifelse(test$Race_Ethc_Visa == "Afram", 1, 
+                          ifelse(test$Race_Ethc_Visa == "Asian", 2,
+                          ifelse(test$Race_Ethc_Visa == "Hispanic", 3,
+                          ifelse(test$Race_Ethc_Visa == "Multi", 4, 0))))
+
+train$Entry_Term <- ifelse(train$Entry_Term == 2131, 0, 1) #2131 = 0, 2141 = 1
+test$Entry_Term <- ifelse(test$Entry_Term == 2131, 0, 1) #2131 = 0, 2141 = 1
+```
+
+\subsection{Section A.} 
+```{r}
+tree.gpa=tree(Term.GPA~.-Persistence.NextYear,data = train.data)
+summary(tree.gpa)
+
+tree.gpa2=tree(Term.GPA~.-Persistence.NextYear,data = f.train.data)
+summary(tree.gpa2)
+```
+
+```{r}
+plot(tree.gpa)
+text(tree.gpa,pretty=0)
+```
+
+```{r}
+cv.gpa=cv.tree(tree.gpa)
+plot(cv.gpa$size,cv.gpa$dev,type='b')
+
+cv.gpa2=cv.tree(tree.gpa2)
+plot(cv.gpa2$size,cv.gpa2$dev,type='b')
+```
+
+```{r}
+par(mfrow=c(1,2))
+yhat=predict(tree.gpa,newdata=test.data)
+plot(yhat,z1)
+abline(0,1)
+cat("Reduced Model Regression Tree Test MSE",mean((yhat-z1)^2),"\n")
+
+yhat2=predict(tree.gpa2,newdata=f.test.data)
+plot(yhat2,z1)
+abline(0,1)
+cat("Full Model Regression Tree Test MSE",mean((yhat2-z1)^2))
+```
+
+```{r}
+set.seed(99)
+bag.gpa=randomForest(Term.GPA~.-Persistence.NextYear, data=train.data, mtry=13, importance=TRUE)
+bag.gpa
+
+bag.gpa2=randomForest(Term.GPA~.-Persistence.NextYear, data=f.train.data, mtry=16, importance=TRUE)
+bag.gpa2
+```
+
+```{r}
+par(mfrow=c(1,2))
+yhat.bag = predict(bag.gpa,newdata=test.data)
+plot(yhat.bag, z1)
+abline(0,1)
+cat("Reduced Model Bagging Test MSE",mean((yhat.bag-z1)^2),"\n")
+
+yhat.bag2 = predict(bag.gpa2,newdata=f.test.data)
+plot(yhat.bag2, z1)
+abline(0,1)
+cat("Full Model Bagging Test MSE",mean((yhat.bag2-z1)^2))
+```
+
+```{r, include = FALSE, eval = FALSE}
+importance(bag.gpa)
+varImpPlot(bag.gpa)
+```
+
+
+```{r}
+set.seed(99)
+forest.gpa=randomForest(Term.GPA~.-Persistence.NextYear,data=train.data, importance=TRUE)
+yhat.forest = predict(forest.gpa,newdata=test.data)
+cat("Reduced Model Random Forests Test MSE:",mean((yhat.forest-z1)^2), "\n")
+
+forest.gpa2=randomForest(Term.GPA~.-Persistence.NextYear,data=f.train.data, importance=TRUE)
+yhat.forest2 = predict(forest.gpa2,newdata=f.test.data)
+cat("Full Model Random Forests Test MSE:",mean((yhat.forest2-z1)^2))
+```
+
+```{r}
+boost.gpa=gbm(Term.GPA~.-Persistence.NextYear,data=train.data,
+                 distribution="gaussian",
+                 n.trees=1000,
+                 interaction.depth=4,
+                 shrinkage=0.1,
+                 cv.folds = 5,
+                 verbose=F)
+
+
+boost.gpa2=gbm(Term.GPA~.-Persistence.NextYear,data=f.train.data,
+                 distribution="gaussian",
+                 n.trees=1000,
+                 interaction.depth=4,
+                 shrinkage=0.1,
+                 cv.folds = 5,
+                 verbose=F)
+```
+
+```{r, include = FALSE, eval = FALSE}
+yhat.boost=predict(boost.gpa,newdata=test.data,n.trees=1000)
+plot(yhat.boost, z1)
+abline(0,1)
+mean((yhat.boost-z1)^2)
+
+yhat.boost2=predict(boost.gpa2,newdata=f.test.data,n.trees=1000)
+plot(yhat.boost2, z1)
+abline(0,1)
+mean((yhat.boost2-z1)^2)
+```
+
+```{r}
+par(mfrow=c(1,2))
+best.iter.gpa = gbm.perf(boost.gpa, method = "cv")
+best.iter.gpa2 = gbm.perf(boost.gpa2, method = "cv")
+```
+
+```{r}
+par(mfrow=c(1,2))
+yhat.boost.best=predict(boost.gpa,newdata=test.data,n.trees=best.iter.gpa)
+plot(yhat.boost.best, z1)
+abline(0,1)
+cat("Reduced Model Boosting Test MSE:",mean((yhat.boost.best-z1)^2), "\n")
+
+yhat.boost.best2=predict(boost.gpa2,newdata=f.test.data,n.trees=best.iter.gpa2)
+plot(yhat.boost.best2, z1)
+abline(0,1)
+cat("Full Model Boosting Test MSE:",mean((yhat.boost.best2-z1)^2))
+```
+
+```{r}
+mean((mean(z1)-z1)^2) #using mean to predict. This should be absolute worst prediction
+```
+
+```{r, eval=FALSE}
+k=13
+mse.nns <- c()
+error.nns <- c()
+for(n in (4:k)) {
+  nn.gpa = neuralnet(Term.GPA~Race_Ethc_Visa+Gender+HSGPA+SAT_Total+Entry_Term+N.Ws+N.DFs+N.As+N.PassedCourse+Perc.Pass+Perc.Withd+N.GraduateCourse+FullTimeStudent, data=train.data.sc, hidden=n, stepmax=3e+05, linear.output=TRUE, err.fct="sse")
+  
+  pr.nn <- compute(nn.gpa,test.data.sc[,1:13])
+  pr.nn <- pr.nn$net.result*(max(data$Term.GPA)-min(data$Term.GPA))+min(data$Term.GPA)   
+  test.cv.r <- (test.data.sc$Term.GPA)*(max(data$Term.GPA)-min(data$Term.GPA))+min(data$Term.GPA)   
+  mse.nns <- c(mse.nns,(sum((test.cv.r - pr.nn)^2)/(nrow(test.data.sc)-2)))
+  
+  print(n)
+  print((sum((test.cv.r - pr.nn)^2)/(nrow(test.data.sc)-2)))
+  
+}
+```
+
+```{r, eval=FALSE}
+mse.nns
+```
+
+```{r, eval=FALSE}
+#yhat.nn <- predict(nn.gpa,newdata=test.data.sc)
+#mse.nns <- c(mse.nns,(sum((yhat.nn - z1.sc)^2)/2)/(length(test.data.sc)-2))
+yhat.nn = predict(nn.gpa,newdata=test.data.sc[,1:13])
+sse.nn <- sum((yhat.nn - z1.sc)^2)/2
+sse.nn
+mse.nn <- sse.nn/(length(test.data.sc)-2)
+mse.nn
+```
+
+```{r}
+neurons = 8
+nn.gpa = neuralnet(Term.GPA~.-Persistence.NextYear, data=f.train.data.sc, hidden=neurons, linear.output=TRUE, err.fct="sse")
+```
+
+```{r}
+pr.nn <- compute(nn.gpa,f.test.data.sc[,1:16])
+pr.nn <- pr.nn$net.result*(max(data$Term.GPA)-min(data$Term.GPA))+min(data$Term.GPA)   
+test.cv.r <- (f.test.data.sc$Term.GPA)*(max(data$Term.GPA)-min(data$Term.GPA))+min(data$Term.GPA)   
+mse.nn <- (sum((test.cv.r - pr.nn)^2)/(nrow(f.test.data.sc)-2))
+cat("Neural Network Test MSE: ", mse.nn)
+```
+
+***
+
+\newpage
+\subsection{Section B.} 
+
+```{r}
+train.data$Persistence.NextYear = factor(ifelse(train.data$Persistence.NextYear == 1, "Yes", "No"))
+test.data$Persistence.NextYear = factor(ifelse(test.data$Persistence.NextYear == 1, "Yes", "No"))
+
+f.train.data$Persistence.NextYear = factor(ifelse(f.train.data$Persistence.NextYear == 1, "Yes", "No"))
+f.test.data$Persistence.NextYear = factor(ifelse(f.test.data$Persistence.NextYear == 1, "Yes", "No"))
+```
+
+
+
+```{r}
+set.seed(99)
+tree.year = tree(Persistence.NextYear~., data = train.data)
+tree.year2 = tree(Persistence.NextYear~., data = f.train.data)
+```
+
+```{r}
+par(mfrow=c(1,2))
+cv.year=cv.tree(tree.year, FUN = prune.misclass)
+plot(cv.year$size,cv.year$dev,type='b', main = "Reduced Model")
+
+cv.year2=cv.tree(tree.year2, FUN = prune.misclass)
+plot(cv.year2$size,cv.year2$dev,type='b', main = "Full Model")
+```
+
+```{r}
+par(mfrow = c(1, 2))
+
+prune.year = prune.misclass(tree.year, best = 7)
+plot(prune.year)
+text(prune.year, pretty = 0, cex = 0.5) 
+title("Reduced Model Tree (7 Node)")
+
+prune.year2 = prune.misclass(tree.year2, best = 7)
+plot(prune.year2) 
+text(prune.year2, pretty = 0, cex = 0.5) 
+title("Full Model Tree (7 Node)")
+```
+
+```{r}
+tree.pred = predict(prune.year,test.data,type="class") #should be pruned tree from cv
+tree.cm = table(test.data$Persistence.NextYear,tree.pred)
+tree.cm
+
+recall = tree.cm[2, 2]/(tree.cm[2, 2] + tree.cm[2,1])
+precision = tree.cm[2, 2]/(tree.cm[2, 2] + tree.cm[1,2])
+
+tree.f1 = 2 * (recall * precision)/(recall + precision)
+cat("Reduced Model Classification Tree Test F1: ",tree.f1,"\n")
+
+tree.accuracy = (tree.cm[1,1] + tree.cm[2,2]) / (length(test.data$Persistence.NextYear))
+cat("Reduced Model Classification Tree Test Accuracy: ",tree.accuracy,"\n")
+```
+
+```{r}
+tree.pred2 = predict(prune.year2,f.test.data,type="class") #should be pruned tree from cv
+tree.cm2 = table(f.test.data$Persistence.NextYear,tree.pred2)
+tree.cm2
+
+recall = tree.cm2[2, 2]/(tree.cm2[2, 2] + tree.cm2[2,1])
+precision = tree.cm2[2, 2]/(tree.cm2[2, 2] + tree.cm2[1,2])
+
+tree.f1.2 = 2 * (recall * precision)/(recall + precision)
+cat("Full Model Classification Tree Test f1: ",tree.f1.2,"\n")
+
+tree.accuracy2 = (tree.cm2[1,1] + tree.cm2[2,2]) / (length(f.test.data$Persistence.NextYear))
+cat("Full Model Classification Tree Test Accuracy: ",tree.accuracy2,"\n")
+```
+
+
+
+```{r}
+set.seed(99)
+bag.year=randomForest(Persistence.NextYear~., data=train.data, mtry=13, importance=TRUE)
+bag.year
+
+bag.year2=randomForest(Persistence.NextYear~., data=f.train.data, mtry=16, importance=TRUE)
+bag.year2
+```
+
+```{r}
+bag.pred = predict(bag.year, test.data, type = "class")
+bag.cm = table(test.data$Persistence.NextYear, bag.pred)
+bag.cm
+
+recall = bag.cm[2, 2]/(bag.cm[2, 2] + bag.cm[2,1])
+precision = bag.cm[2, 2]/(bag.cm[2, 2] + bag.cm[1,2])
+
+bag.f1 = 2 * (recall * precision)/(recall + precision)
+cat("Reduced Model Bagging Test f1: ",bag.f1,"\n")
+
+bag.accuracy = (bag.cm[1,1] + bag.cm[2,2]) / (length(test.data$Persistence.NextYear))
+cat("Reduced Model Bagging Test Accuracy: ",bag.accuracy,"\n")
+```
+
+```{r}
+bag.pred2 = predict(bag.year2, f.test.data, type = "class")
+bag.cm2 = table(f.test.data$Persistence.NextYear, bag.pred2)
+bag.cm2
+
+recall = bag.cm2[2, 2]/(bag.cm2[2, 2] + bag.cm2[2,1])
+precision = bag.cm2[2, 2]/(bag.cm2[2, 2] + bag.cm2[1,2])
+
+bag.f1.2 = 2 * (recall * precision)/(recall + precision)
+cat("Full Model Bagging Test f1: ",bag.f1.2,"\n")
+
+bag.accuracy2 = (bag.cm2[1,1] + bag.cm2[2,2]) / (length(f.test.data$Persistence.NextYear))
+cat("Full Model Bagging Test Accuracy: ",bag.accuracy2,"\n")
+```
+
+```{r}
+set.seed(99)
+forest.year=randomForest(Persistence.NextYear~.,data=train.data, importance=TRUE)
+
+forest.year2=randomForest(Persistence.NextYear~.,data=f.train.data, importance=TRUE)
+```
+
+```{r}
+forest.pred = predict(forest.year, test.data, type = "class")
+forest.cm = table(test.data$Persistence.NextYear, forest.pred)
+forest.cm
+
+recall = forest.cm[2, 2]/(forest.cm[2, 2] + forest.cm[2,1])
+precision = forest.cm[2, 2]/(forest.cm[2, 2] + forest.cm[1,2])
+
+forest.f1 = 2 * (recall * precision)/(recall + precision)
+cat("Reduced Model Random Forests Test f1: ",forest.f1,"\n")
+
+forest.accuracy = (forest.cm[1,1] + forest.cm[2,2]) / (length(test.data$Persistence.NextYear))
+cat("Reduced Model Random Forests Test Accuracy: ",forest.accuracy,"\n")
+```
+
+```{r}
+forest.pred2 = predict(forest.year2, f.test.data, type = "class")
+forest.cm2 = table(f.test.data$Persistence.NextYear, forest.pred2)
+forest.cm2
+
+recall = forest.cm2[2, 2]/(forest.cm2[2, 2] + forest.cm2[2,1])
+precision = forest.cm2[2, 2]/(forest.cm2[2, 2] + forest.cm2[1,2])
+
+forest.f1.2 = 2 * (recall * precision)/(recall + precision)
+cat("Full Model Random Forests Test f1: ",forest.f1.2,"\n")
+
+forest.accuracy2 = (forest.cm2[1,1] + forest.cm2[2,2]) / (length(f.test.data$Persistence.NextYear))
+cat("Full Model Random Forests Test Accuracy: ",forest.accuracy2,"\n")
+```
+
+
+```{r}
+train.data$Persistence.NextYear = ifelse(train.data$Persistence.NextYear == "Yes", 1, 0)
+test.data$Persistence.NextYear = ifelse(test.data$Persistence.NextYear == "Yes", 1, 0)
+
+f.train.data$Persistence.NextYear = ifelse(f.train.data$Persistence.NextYear == "Yes", 1, 0)
+f.test.data$Persistence.NextYear = ifelse(f.test.data$Persistence.NextYear == "Yes", 1, 0)
+```
+
+```{r}
+par(mfrow=c(1,2))
+boost.year=gbm(Persistence.NextYear~.,data=train.data,
+                 distribution="bernoulli",
+                 n.trees=1000,
+                 interaction.depth=4,
+                 shrinkage=0.1,
+                 cv.folds = 5,
+                 verbose=F)
+
+best.iter.year = gbm.perf(boost.year, method = "cv")
+
+
+boost.year2=gbm(Persistence.NextYear~.,data=f.train.data,
+                 distribution="bernoulli",
+                 n.trees=1000,
+                 interaction.depth=4,
+                 shrinkage=0.1,
+                 cv.folds = 5,
+                 verbose=F)
+
+best.iter.year2 = gbm.perf(boost.year2, method = "cv")
+```
+
+```{r, include = FALSE, eval = FALSE}
+boost.probs = predict.gbm(boost.year, newdata=test.data, n.trees = boost.year$n.trees, type = "response")
+boost.probs = as.matrix(boost.probs)
+boost.pred <- ifelse(boost.probs > 0.5, 1, 0)
+
+boost.cm = table(test.data$Persistence.NextYear,boost.pred)
+boost.cm
+
+recall = boost.cm[2, 2]/(boost.cm[2, 2] + boost.cm[2,1])
+precision = boost.cm[2, 2]/(boost.cm[2, 2] + boost.cm[1,2])
+
+boost.f1 = 2 * (recall * precision)/(recall + precision)
+cat("Reduced Model Full Boosting Test f1: ",boost.f1,"\n")
+
+boost.accuracy = (boost.cm[1,1] + boost.cm[2,2]) / (length(test.data$Persistence.NextYear))
+cat("Reduced Model Full Boosting Test Accuracy: ",boost.accuracy,"\n")
+```
+
+```{r}
+boost.probs.i = predict.gbm(boost.year, newdata=test.data, n.trees = best.iter.year, type = "response")
+boost.probs.i = as.matrix(boost.probs.i)
+boost.pred.i <- ifelse(boost.probs.i > 0.5, 1, 0)
+
+boost.cm.i = table(test.data$Persistence.NextYear,boost.pred.i)
+boost.cm.i
+
+recall = boost.cm.i[2, 2]/(boost.cm.i[2, 2] + boost.cm.i[2,1])
+precision = boost.cm.i[2, 2]/(boost.cm.i[2, 2] + boost.cm.i[1,2])
+
+boost.f1.i = 2 * (recall * precision)/(recall + precision)
+cat("Reduced Model Best Boosting Test f1: ",boost.f1.i,"\n")
+
+boost.accuracy.i = (boost.cm.i[1,1] + boost.cm.i[2,2]) / (length(test.data$Persistence.NextYear))
+cat("Reduced Model Best Boosting Test Accuracy: ",boost.accuracy.i,"\n")
+```
+
+```{r, include = FALSE, eval = FALSE}
+boost.probs2 = predict.gbm(boost.year2, newdata=f.test.data, n.trees = boost.year2$n.trees, type = "response")
+boost.probs2 = as.matrix(boost.probs2)
+boost.pred2 <- ifelse(boost.probs2 > 0.5, 1, 0)
+
+boost.cm2 = table(f.test.data$Persistence.NextYear,boost.pred2)
+boost.cm2
+
+recall = boost.cm2[2, 2]/(boost.cm2[2, 2] + boost.cm2[2,1])
+precision = boost.cm2[2, 2]/(boost.cm2[2, 2] + boost.cm2[1,2])
+
+boost.f1.2 = 2 * (recall * precision)/(recall + precision)
+cat("Full Model Full Boosting Test f1: ",boost.f1.2,"\n")
+
+boost.accuracy2 = (boost.cm2[1,1] + boost.cm2[2,2]) / (length(f.test.data$Persistence.NextYear))
+cat("Full Model Full Boosting Test Accuracy: ",boost.accuracy2,"\n")
+```
+
+```{r}
+boost.probs.i2 = predict.gbm(boost.year2, newdata=f.test.data, n.trees = best.iter.year2, type = "response")
+boost.probs.i2 = as.matrix(boost.probs.i2)
+boost.pred.i2 <- ifelse(boost.probs.i2 > 0.5, 1, 0)
+
+boost.cm.i2 = table(f.test.data$Persistence.NextYear,boost.pred.i2)
+boost.cm.i2
+
+recall = boost.cm.i2[2, 2]/(boost.cm.i2[2, 2] + boost.cm.i2[2,1])
+precision = boost.cm.i2[2, 2]/(boost.cm.i2[2, 2] + boost.cm.i2[1,2])
+
+boost.f1.i2 = 2 * (recall * precision)/(recall + precision)
+cat("Full Model Best Boosting Test f1: ",boost.f1.i2,"\n")
+
+boost.accuracy.i2 = (boost.cm.i2[1,1] + boost.cm.i2[2,2]) / (length(f.test.data$Persistence.NextYear))
+cat("Full Model Best Boosting Test Accuracy: ",boost.accuracy.i2,"\n")
+```
+
+```{r}
+neurons = 8
+nn.gpa = neuralnet(Term.GPA~Race_Ethc_Visa+Gender+HSGPA+SAT_Total+Entry_Term+N.Ws+N.DFs+N.As+N.PassedCourse+Perc.Pass+Perc.Withd+N.GraduateCourse+FullTimeStudent+N.RegisteredCourse+N.CourseTaken+Perc.PassedEnrolledCourse, data=f.train.data.sc, hidden=neurons, threshold = 0.2, stepmax = 1e+05, linear.output=TRUE, err.fct="sse")
+```
+#Race_Ethc_Visa+Gender+HSGPA+SAT_Total+Entry_Term+N.Ws+N.DFs+N.As+N.PassedCourse+Perc.Pass+Perc.Withd+N.GraduateCourse+FullTimeStudent+N.RegisteredCourse+N.CourseTaken+Perc.PassedEnrolledCourse+Term.GPA
+
+```{r}
+pr.nn <- compute(nn.gpa,f.test.data.sc[,c(1:16)])
+pr.nn <- pr.nn$net.result*(max(data$Term.GPA)-min(data$Term.GPA))+min(data$Term.GPA)   
+test.cv.r <- (f.test.data.sc$Term.GPA)*(max(data$Term.GPA)-min(data$Term.GPA))+min(data$Term.GPA)   
+mse.nn <- sum((test.cv.r - pr.nn)^2)/(nrow(f.test.data.sc)-2)
+cat("Neural Network Test MSE: ", mse.nn)
+```
+
+```{r}
+neurons = 8
+nn.year = neuralnet(Persistence.NextYear~Race_Ethc_Visa+Gender+HSGPA+SAT_Total+Entry_Term+N.Ws+N.DFs+N.As+N.PassedCourse+Perc.Pass+Perc.Withd+N.GraduateCourse+FullTimeStudent+N.RegisteredCourse+N.CourseTaken+Perc.PassedEnrolledCourse+Term.GPA, data=f.train.data.sc, hidden=neurons, threshold = 0.2, stepmax = 1e+05, linear.output=FALSE)
+```
+
+```{r}
+probs <- predict(nn.year,f.test.data.sc[,c(1:17)])
+pred_class <- ifelse(probs>0.5,1,0)
+
+nn.cm <- table(f.test.data.sc$Persistence.NextYear, pred_class)
+
+recall = nn.cm[2, 2]/(nn.cm[2, 2] + nn.cm[2,1])
+precision = nn.cm[2, 2]/(nn.cm[2, 2] + nn.cm[1,2])
+
+nn.f1 = 2 * (recall * precision)/(recall + precision)
+cat("Neural Network Test f1: ",nn.f1,"\n")
+
+nn.accuracy = (nn.cm[1,1] + nn.cm[2,2]) / (length(f.test.data.sc$Persistence.NextYear))
+cat("Neural Network Test Accuracy: ",nn.accuracy,"\n")
+```
+
+```{r}
+k=16
+mse.nns <- c()
+for(neurons in (1:k)) {
+  nn.gpa = neuralnet(Term.GPA~Race_Ethc_Visa+Gender+HSGPA+SAT_Total+Entry_Term+N.Ws+N.DFs+N.As+N.PassedCourse+Perc.Pass+Perc.Withd+N.GraduateCourse+FullTimeStudent+N.RegisteredCourse+N.CourseTaken+Perc.PassedEnrolledCourse, data = f.train.data.sc, hidden = neurons, threshold = 0.4, stepmax = 1e+05, linear.output = TRUE, err.fct = "sse", rep = 10)
+  
+  pr.nn <- compute(nn.gpa,f.test.data.sc[,c(1:16)])
+  pr.nn <- pr.nn$net.result*(max(data$Term.GPA)-min(data$Term.GPA))+min(data$Term.GPA)   
+  test.cv.r <- (f.test.data.sc$Term.GPA)*(max(data$Term.GPA)-min(data$Term.GPA))+min(data$Term.GPA)   
+  mse.nns <- c(mse.nns,(sum((test.cv.r - pr.nn)^2)/(nrow(f.test.data.sc)-2)))
+  
+  print(neurons)
+  print((sum((test.cv.r - pr.nn)^2)/(nrow(f.test.data.sc)-2)))
+  
+}
+```
+
+```{r}
+k=16
+f1.nns <- c()
+acc.nns <- c()
+for(neurons in (1:k)){
+  nn.year = neuralnet(Persistence.NextYear~Race_Ethc_Visa+Gender+HSGPA+SAT_Total+Entry_Term+N.Ws+N.DFs+N.As+N.PassedCourse+Perc.Pass+Perc.Withd+N.GraduateCourse+FullTimeStudent+N.RegisteredCourse+N.CourseTaken+Perc.PassedEnrolledCourse+Term.GPA, data = f.train.data.sc, hidden = neurons, threshold = 0.4, stepmax = 1e+05, linear.output = FALSE, rep = 10)
+
+  probs <- predict(nn.year,f.test.data.sc[,c(1:17)])
+  pred_class <- ifelse(probs>0.5,1,0)
+
+  nn.cm <- table(f.test.data.sc$Persistence.NextYear, pred_class)
+
+  recall = nn.cm[2, 2]/(nn.cm[2, 2] + nn.cm[2,1])
+  precision = nn.cm[2, 2]/(nn.cm[2, 2] + nn.cm[1,2])
+
+  f1.nns = c(f1.nns,(2 * (recall * precision)/(recall + precision)))
+  acc.nns = c(acc.nns,((nn.cm[1,1] + nn.cm[2,2]) / length(f.test.data.sc$Persistence.NextYear)))
+  
+  print(neurons)
+  print((2 * (recall * precision)/(recall + precision)))
+  print(((nn.cm[1,1] + nn.cm[2,2]) / length(f.test.data.sc$Persistence.NextYear)))
+}
+
+```
+
+```{r}
+plot(mse.nns, type = "b", main = "Test MSE vs # of Neurons in Hidden Layer")
+plot(f1.nns, type = "b", main = "Test F1 vs # of Neurons in Hidden Layer")
+plot(acc.nns, type = "b", main = "Test Accuracy vs # of Neurons in Hidden Layer")
+```
+
+***
+\newpage
+\subsection{Section C.} 
+
+- Part a.
+
+
+***
+- Part b.
+
+
+***
+
+- Part c.
+
+
+***
+
+\newpage
+
+- BONUS.
+
+
+
+***
+
+\newpage
+
+***
+I hereby write and submit my solutions without violating the academic honesty and integrity. If not, I accept the consequences. 
+
+### Write your pair you worked at the top of the page. If no pair, it is ok. List other fiends you worked with (name, last name): ... Avery Girsky
+
+### Disclose the resources or persons if you get any help: ... Lab Codes, Previous Assignments
+
+### How long did the assignment solutions take?: ...
+
+
+***
+## References
+...
