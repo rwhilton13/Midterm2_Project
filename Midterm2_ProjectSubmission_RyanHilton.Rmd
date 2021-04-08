@@ -792,7 +792,7 @@ kable(b.table, caption = "Test Accuracy and F1 Scores for All Tree and Neural Ne
 ```
 
 ```{r}
-b2.table = matrix(c(boost.accuracy.i, boost.accuracy.iR, .99, .99 ,stupid.f1,.9565,boost.f1.i, boost.f1.iR, 0.99, 0.99, stupid.accuracy, .9115), ncol = 2)
+b2.table = matrix(c(boost.accuracy.i, boost.accuracy.iR, .99, .99, stupid.accuracy, .9115,boost.f1.i, boost.f1.iR, 0.99, 0.99, stupid.f1,.9565,), ncol = 2)
 rownames(b2.table) = c(paste("Full Model (",as.character(best.iter.year),") trees"), paste("Reduced Model (",as.character(best.iter.yearR),") trees"), "Full Model (Node Architecture)", "Reduced Model (Node Architecture)", "Dominant Classification as Predictor (All Yes)", "Multiple Logistic Regression Baseline")
 colnames(b2.table) = c("Test Accuracy", "Test F1")
 
