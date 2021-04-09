@@ -95,6 +95,8 @@ Additionally, a student who will get the highest performances from both problems
 
 ## Your Solutions
 
+I'm going to start by saying that I produced test statistics for every tree-based method that we discussed, but I hid the code for the models that under-performed. I also performed a rudimentary grid search for the neural network parts to help find a better than average neural network architecture. You can run that code if you want to reproduce results, but it takes a long time. For everyone's convenience, I captured images and printed them. The code that I ran for them though is shown.
+
 ```{r, include = FALSE}
 library(ISLR) 
 library(MASS) 
@@ -139,6 +141,7 @@ full.data$Perc.Pass = ifelse(is.na(full.data$Perc.Pass), -1, full.data$Perc.Pass
 cat("% Complete Cases Before NA Adjustments: ",sum(complete.cases(full.data)/nrow(full.data)))
 #full.data <- na.omit(full.data)
 ```
+For the perc.pass variable, removing the NA's or doing median/knn imputation for them is unwise. This is because, whenever perc.withd was 1, perc.pass was NA. This is a trend that we don't want to lose or misrepresent in our pre-processing. I decided to make the value -1. This has a chance to slightly skew the regression models, but I think removing them or changing their values using median/knn imputation would be worse.
 
 ```{r}
 #look more specifically at what data has na values.
@@ -157,7 +160,7 @@ cat("% Complete Cases Before NA Adjustments: ",sum(complete.cases(full.data)/nro
 #SAT_Total.na$SAT_Total <- median(full.data$SAT_Total, na.rm=TRUE)
 #SAT_Total.na
 
-#if we wanted to median imputate the rest of the values instead of omiting them
+#if we wanted to median imputate the rest of the values instead of omitting them
 full.data[is.na(full.data$Gender),]$Gender <- median(full.data$Gender, na.rm=TRUE)
 full.data[is.na(full.data$HSGPA),]$HSGPA <- median(full.data$HSGPA, na.rm=TRUE)
 full.data[is.na(full.data$SAT_Total),]$SAT_Total <- median(full.data$SAT_Total, na.rm=TRUE)
@@ -168,10 +171,13 @@ summary(full.data)
 ```
 
 ```{r}
+slr <- lm(Term.GPA~.-Persistence.NextYear,data = full.data)
+summary(slr)
 slr <- lm(Term.GPA~.-Persistence.NextYear-N.CourseTaken-N.RegisteredCourse-Perc.PassedEnrolledCourse,data = full.data)
 vif(slr)
 #Race_Ethc_Visa, Gender, HSGPA, SAT_Total, Entry_Term, N.Ws, N.DFs, N.As, N.PassedCourse, Perc.Pass, Perc.Withd, N.GraduateCourse, FullTimeStudent
 ```
+I'm showing this again because I think this is important. In midterm 1, we used the same data and there were some multicollinearity problems. I'm going to have two sets of data, the full data with all variables, and the reduced data with all the variables except the variables that were causing large multicollinearity values (or perfect multicollinearity). The three variables of concern are Perc.PassedEnrolledCourse, N.CourseTaken, and N.RegisteredCourse. We will see which models perform better.
 
 ```{r}
 full.data <- full.data[, c(1,2,3,4,5,9,10,11,12,15,16,17,18,8,13,14,6,7)] #last rows now response vars
@@ -190,6 +196,7 @@ dim(reduced.data)
 ```
 
 ```{r}
+# neural networks train better with scaled data so I will use this normalizing function to create additional datasets for the neural network portion.
 normalize <- function(x) {
   return ((x - min(x)) / (max(x) - min(x)))
 }
@@ -216,14 +223,6 @@ r.test.data.sc = reduced.scaled.data[-train,]
 ```
 
 ```{r}
-#Summarize univariately
-#summary(train.data) 
-#summary(test.data) 
-
-#Dims
-dim(train.data) #5900 18
-dim(test.data) #1535 18
-
 #Response variables 
 z1=test.data$Term.GPA #numerical
 z2=test.data$Persistence.NextYear #categorical: 0, 1
@@ -308,20 +307,21 @@ cat("Reduced Model Random Forests Test MSE:",mean((yhat.forestR-z1)^2))
 ```
 
 ```{r}
+set.seed(99)
 boost.gpa=gbm(Term.GPA~.-Persistence.NextYear,data=train.data,
                  distribution="gaussian",
-                 n.trees=1000,
+                 n.trees=1500,
                  interaction.depth=4,
-                 shrinkage= 0.05,
+                 shrinkage= 0.01,
                  cv.folds = 5,
                  verbose=F)
 
 
 boost.gpaR=gbm(Term.GPA~.-Persistence.NextYear,data=r.train.data,
                  distribution="gaussian",
-                 n.trees=1000,
+                 n.trees=1500,
                  interaction.depth=4,
-                 shrinkage=0.05,
+                 shrinkage=0.01,
                  cv.folds = 5,
                  verbose=F)
 ```
@@ -330,6 +330,7 @@ boost.gpaR=gbm(Term.GPA~.-Persistence.NextYear,data=r.train.data,
 par(mfrow=c(1,2))
 best.iter.gpa = gbm.perf(boost.gpa, method = "cv")
 best.iter.gpaR = gbm.perf(boost.gpaR, method = "cv")
+#we want the best iteration tree because it doesn't overfit the data, compared to the last tree constructed
 ```
 
 ```{r}
@@ -346,14 +347,10 @@ abline(0,1)
 boost.mseR <- mean((yhat.boost.bestR-z1)^2)
 cat("Reduced Model Boosting Test MSE:",mean((yhat.boost.bestR-z1)^2))
 ```
-
-```{r}
-mean((mean(z1)-z1)^2) #using mean to predict. This should be absolute worst prediction
-```
-
+These plots don't look good, but the results we got are better than the baseline SLR test MSE.
 
 ```{r, eval=FALSE}
-#You can run this if you want. It took a couple hours, but I obtained a mapping of MSE values based on the number of neurons in the first and second hidden layers.
+#You can run this if you want. It took a couple hours, but I obtained a mapping of MSE values based on the number of neurons in the first and second hidden layers. I ran this twice using k=16,k2=16 and then k=7,k2=16. I only plotted the conditional plots for the k=16,k2=16 run.
 set.seed(99)
 k=16
 k2=16
@@ -362,7 +359,7 @@ mse.nns2 <- c()
 for(neurons in (1:k)) {
   for(neurons2 in (1:k2)) {
     
-    nn.gpa = neuralnet(Term.GPA~Race_Ethc_Visa+Gender+HSGPA+SAT_Total+Entry_Term+N.Ws+N.DFs+N.As+N.PassedCourse+Perc.Pass+Perc.Withd+N.GraduateCourse+FullTimeStudent+N.RegisteredCourse+N.CourseTaken+Perc.PassedEnrolledCourse, data = train.data.sc, hidden = c(neurons,neurons2), threshold = 0.5, stepmax = 1e+05, linear.output = TRUE, err.fct = "sse", act.fct = "tanh", rep = 10)
+    nn.gpa = neuralnet(Term.GPA~Race_Ethc_Visa+Gender+HSGPA+SAT_Total+Entry_Term+N.Ws+N.DFs+N.As+N.PassedCourse+Perc.Pass+Perc.Withd+N.GraduateCourse+FullTimeStudent+N.RegisteredCourse+N.CourseTaken+Perc.PassedEnrolledCourse, data = train.data.sc, hidden = c(neurons,neurons2), threshold = 0.5, stepmax = 1e+05, linear.output = TRUE, err.fct = "sse", act.fct = "tanh", rep = 5)
     
     pr.nn <- compute(nn.gpa,test.data.sc[,c(1:16)])
     pr.nn <- pr.nn$net.result*(max(full.data$Term.GPA)-min(full.data$Term.GPA))+min(full.data$Term.GPA)   
@@ -377,7 +374,7 @@ for(neurons in (1:k)) {
 ```
 
 ```{r, eval = FALSE}
-#processing what I generated from previous r chunk. More code would need to be added to create plots for both r chunks that did grid searches for nn architecture. Whichever r chunk you ran last will be created here
+#processing what I generated from previous r chunk
 
 #mses <- round(mse.nns, 3)
 mses <- round(mse.nns2, 4)
@@ -413,22 +410,27 @@ plot(df$secondLayer, df$Test.MSE)
 #dev.off()
 ```
 
-```{r, dpi=250, out.height='85%', echo=FALSE}
+```{r, dpi=250, echo=FALSE}
 include_graphics("TwoLayerNN_RegTest.png")
 include_graphics("TwoLayerNN_RegTest2.png")
 ```
+You can take a look at the plots from above and due with them what you will. I find the more interesting information is in the following conditional plots.
 
 ```{r, dpi=250, echo=FALSE}
 par(mfrow = c(1,2))
 include_graphics("FirstLayerVSmse.png")
 include_graphics("SecondLayerVSmse.png")
 ```
+From the first layer vs mse plot, we can clearly see that the variance of mse values became larger as we increased the number of first hidden layer neurons. If we created a neural network with 1-7 first hidden layer neurons and any number of second layer neurons (up to 16), we can be fairly confident that our test mse value won't be higher than 1.05. This statement becomes more shaky when applied to the neural network architectures with more than 7 first hidden layer neurons. For the second layer vs mse plot, we can kind of see the same distribution occur, but it's slightly weaker. It seemed that 1-7 second hidden layer neuron architectures were less variable than the other larger architectures. Using the information from these plots, I decided that 1 first hidden layer neuron was best and, because it seemed like it didn't matter as much on the size of the second hidden layer, I decided to go with $\sqrt{p}$ (p = # of predictors), as the number of second hidden layer neurons.
 
+It seems like this type of optimal architecture search is going past the scope of this project, but I thought it was fairly interesting to look at the results and see if there was any trend. I think there is a lot of research that can be done when it comes to finding optimal neural network architecture for a given problem. Anyways, back to the project!
 
 ```{r}
 set.seed(99)
-neurons = 1 #best number of first hidden layer neurons (produced most consistently low mse values)
-neurons2 = 4 # sqrt(predictors) seems reasonable considering the choice of second hidden layer neurons didn't seem to play a big role in mse values with 1 first hidden layer neuron
+neurons = 1 
+# best number of first hidden layer neurons (produced most consistently low mse values)
+neurons2 = 4 
+# sqrt(predictors) seems reasonable considering the choice of second hidden layer neurons didn't seem to play a big role in mse values with 1 first hidden layer neuron
 nn.gpa = neuralnet(Term.GPA~Race_Ethc_Visa+Gender+HSGPA+SAT_Total+Entry_Term+N.Ws+N.DFs+N.As+N.PassedCourse+Perc.Pass+Perc.Withd+N.GraduateCourse+FullTimeStudent+N.RegisteredCourse+N.CourseTaken+Perc.PassedEnrolledCourse, data = train.data.sc, hidden = c(neurons,neurons2), threshold = 0.1, stepmax = 1e+05, linear.output = TRUE, err.fct = "sse", act.fct = "tanh", rep = 5)
 
 plot(nn.gpa)
@@ -458,6 +460,10 @@ cat("Neural Network Test MSE: ", nn.mse2)
 ```
 
 ```{r}
+mean((mean(z1)-z1)^2) #using mean to predict. This should be absolute worst prediction
+```
+
+```{r}
 a.table = matrix(c(tree.mse, tree.mseR, bag.mse, bag.mseR, forest.mse, forest.mseR, boost.mse, boost.mseR, nn.mse, nn.mse2), ncol = 1)
 rownames(a.table) = c("Full Model","Reduced Model","Full Model","Reduced Model","Full Model","Reduced Model",paste("Full Model (",as.character(best.iter.gpa),") trees"), paste("Reduced Model (",as.character(best.iter.gpaR),") trees"), "Full Model (2 Hidden Layers | 1-4)", "Reduced Model (2 Hidden Layers | 1-4)")
 colnames(a.table) = c("Test MSE")
@@ -471,6 +477,7 @@ kable(a.table, caption = "Test MSE for All Tree and Neural Network Models") %>%
   pack_rows("Neural Networks", 9,10)
 ```
 
+Here are the results for all of the tree-based regression models and the neural net. Bagging and Random Forests seem to prove fairly poorly with this data for regression. However, a basic 1 node regression tree, our best iteration boosting models, and our full model neural network. The 1 node regression tree is very similar to the SLR model as it only used HSGPA. The fact that no other tree could be found that includes any other variables to make a better model was surprising and shows that the data space we are dealing with doesn't partition easily into predictable sub-spaces. Boosting was the best model here, but by only about ~0.01-0.02. The reduced boosting model did only slightly better than the full boosting model.
 ```{r}
 a2.table = matrix(c(boost.mse, boost.mseR, nn.mse, nn.mse2, mean((mean(z1)-z1)^2), .991), ncol = 1)
 rownames(a2.table) = c(paste("Full Model (",as.character(best.iter.gpa),") trees"), paste("Reduced Model (",as.character(best.iter.gpaR),") trees"), "Full Model (2 Hidden Layers | 1-4)", "Reduced Model (2 Hidden Layers | 1-4)", "Response Mean as Predictor", "SLR Baseline")
@@ -483,10 +490,14 @@ kable(a2.table, caption = "Test MSE for Best Tree and Neural Network Models") %>
   pack_rows("Other", 5,6)
 ```
 
+As we can see from the table above, this is our main table for Part A. I chose the boosting model for a couple reasons. I will mentioned most of them in my overall analysis in Part C. I will say that one of the reasons I chose Boosting is it produced better test MSE values than the other models. We can see here that the boosting models and full predictor neural network model performed better than our SLR baseline from project 1. I also included the test MSE if we used the mean of Term.GPA to predict Term.GPA. The same problem arises from project 1 where our models are not making much separation, performance wise, from the bare minimum method of predicting Term.GPA. The reduced neural network model actually performed worse than using Term.GPA mean as predictor. This tells us again that our data is very awkward to deal with and even models that can deal with very non-linear data like neural networks still had trouble predicting Term.GPA.
+
 ***
 
 \newpage
 \subsection{Section B.} 
+
+I decided to include the classification tree results in the final pdf because I think the results are more interesting and show the difference between our models made for Term.GPA (1 node regression tree) vs Persistence.NextYear. I say the second part because I find that decision trees have a very nice characteristic in that if the optimal pruned tree has many nodes, all of the subspaces $R_i$ that we get from that tree are more likely data spaces that are easier to predict in. I think of the example given in the book where they show a cube partition into 5 different subspaces and each subspace is given a function value. I think of this example, but in even higher dimensions. The more nodes we see in the optimal decision tree, the more data spaces we have in our entire higher-dimensional data space that are easier to predict in. When this is the case, the actual data that we have is much nicer to deal with.
 
 ```{r}
 train.data$Persistence.NextYear = factor(ifelse(train.data$Persistence.NextYear == 1, "Yes", "No"))
@@ -495,8 +506,6 @@ test.data$Persistence.NextYear = factor(ifelse(test.data$Persistence.NextYear ==
 r.train.data$Persistence.NextYear = factor(ifelse(r.train.data$Persistence.NextYear == 1, "Yes", "No"))
 r.test.data$Persistence.NextYear = factor(ifelse(r.test.data$Persistence.NextYear == 1, "Yes", "No"))
 ```
-
-
 
 ```{r}
 set.seed(99)
@@ -645,12 +654,13 @@ r.test.data$Persistence.NextYear = ifelse(r.test.data$Persistence.NextYear == "Y
 ```
 
 ```{r}
+set.seed(99)
 par(mfrow=c(1,2))
 boost.year=gbm(Persistence.NextYear~.,data=train.data,
                  distribution="bernoulli",
-                 n.trees=1000,
+                 n.trees=2500,
                  interaction.depth=4,
-                 shrinkage=0.1,
+                 shrinkage=0.01,
                  cv.folds = 5,
                  verbose=F)
 
@@ -659,9 +669,9 @@ best.iter.year = gbm.perf(boost.year, method = "cv")
 
 boost.yearR=gbm(Persistence.NextYear~.,data=r.train.data,
                  distribution="bernoulli",
-                 n.trees=1000,
+                 n.trees=2500,
                  interaction.depth=4,
-                 shrinkage=0.1,
+                 shrinkage=0.01,
                  cv.folds = 5,
                  verbose=F)
 
@@ -785,6 +795,7 @@ par(mfrow = c(1,2))
 include_graphics("FirstLayerVSacc.png")
 include_graphics("SecondLayerVSacc.png")
 ```
+The plots show a different shape than the regression plots for the tested neural nets. The first layer vs test MSE kind of shows a mountain shape where the peak is around 4-5. The second layer vs test MSE again is less predictable. Overall, this method doesn't provide as much concrete information as the regression considering that the variances across all architectures seem to be more similar, and the hyperparameters I used were more geared towards speed of testing rather than quality and repeatability (lower variance). It does seem like architectures that are on the smaller side are slightly better than larger architectures, but there is a lot of room for me to big wrong about that. I decided to use the same process as I did when deciding the number of second layer neurons for the regression neural network and go with 4 first layer neurons and 4 second layer neurons.
 
 ```{r}
 set.seed(99)
@@ -800,6 +811,7 @@ ypred = ypred$net.result
 pred_class <- ifelse(ypred > 0.5,1,0)
 
 nn.cm <- confusionMatrix(as.factor(test.data.sc$Persistence.NextYear), as.factor(pred_class))
+nn.cm$table
 
 recall = nn.cm$table[2,2]/(nn.cm$table[2,2] + nn.cm$table[2,1])
 precision = nn.cm$table[2,2]/(nn.cm$table[2,2] + nn.cm$table[1,2])
@@ -824,6 +836,7 @@ ypred2 = ypred2$net.result
 pred_class2 <- ifelse(ypred2 > 0.5,1,0)
 
 nn.cm2 <- confusionMatrix(as.factor(r.test.data.sc$Persistence.NextYear), as.factor(pred_class2))
+nn.cm2$table
 
 recall = nn.cm2$table[2,2]/(nn.cm2$table[2,2] + nn.cm2$table[2,1])
 precision = nn.cm2$table[2,2]/(nn.cm2$table[2,2] + nn.cm2$table[1,2])
@@ -848,7 +861,7 @@ stupid.accuracy <- stupid.df[2,2]/length(test.data$Persistence.NextYear)
 
 ```{r}
 b.table = matrix(c(tree.accuracy, tree.accuracyR, bag.accuracy, bag.accuracyR, forest.accuracy, forest.accuracyR, boost.accuracy.i, boost.accuracy.iR, nn.accuracy, nn.accuracy2, tree.f1, tree.f1.R, bag.f1, bag.f1.R, forest.f1, forest.f1.R, boost.f1.i, boost.f1.iR, nn.f1, nn.f1.2), ncol = 2)
-rownames(b.table) = c("Full Model","Reduced Model","Full Model","Reduced Model","Full Model","Reduced Model",paste("Full Model (",as.character(best.iter.year),") trees"), paste("Reduced Model (",as.character(best.iter.yearR),") trees"), "Full Model (Node Architecture)", "Reduced Model (Node Architecture)")
+rownames(b.table) = c("Full Model","Reduced Model","Full Model","Reduced Model","Full Model","Reduced Model",paste("Full Model (",as.character(best.iter.year),") trees"), paste("Reduced Model (",as.character(best.iter.yearR),") trees"), "Full Model (2 Hidden Layers | 4-4)", "Reduced Model (2 Hidden Layers | 4-4)")
 colnames(b.table) = c("Test Accuracy", "Test F1")
 
 kable(b.table, caption = "Test Accuracy and F1 Scores for All Tree and Neural Network Models") %>%
@@ -860,9 +873,11 @@ kable(b.table, caption = "Test Accuracy and F1 Scores for All Tree and Neural Ne
   pack_rows("Neural Networks", 9,10)
 ```
 
+Our tree methods are all performing pretty closely to one another here. I think for best tree-based method, I'm still going to stick with the boosting model even though it had slightly worse performance scores compared to our basic pruned decision tree. I will explain my reasons for this in my overall paragraph. Our neural network did not perform as well compared to the tree-based methods. I had to make the threshold value much higher than I wanted to in order to get any results from the neural net so I think that has something to do with the lower performance scores.
+
 ```{r}
 b2.table = matrix(c(boost.accuracy.i, boost.accuracy.iR, nn.accuracy, nn.accuracy2, stupid.accuracy, .9115,boost.f1.i, boost.f1.iR, nn.f1, nn.f1.2, stupid.f1,.9565), ncol = 2)
-rownames(b2.table) = c(paste("Full Model (",as.character(best.iter.year),") trees"), paste("Reduced Model (",as.character(best.iter.yearR),") trees"), "Full Model (Node Architecture)", "Reduced Model (Node Architecture)", "Dominant Classification as Predictor (All Yes)", "Multiple Logistic Regression Baseline")
+rownames(b2.table) = c(paste("Full Model (",as.character(best.iter.year),") trees"), paste("Reduced Model (",as.character(best.iter.yearR),") trees"), "Full Model (2 Hidden Layers | 4-4)", "Reduced Model (2 Hidden Layers | 4-4)", "Dominant Classification as Predictor (All Yes)", "Multiple Logistic Regression Baseline")
 colnames(b2.table) = c("Test Accuracy", "Test F1")
 
 kable(b2.table, caption = "Test Accuracy and F1 Scores for Best Tree and Neural Network Models") %>%
@@ -871,6 +886,8 @@ kable(b2.table, caption = "Test Accuracy and F1 Scores for Best Tree and Neural 
   pack_rows("Neural Networks", 3,4) %>%
   pack_rows("Other", 5,6)
 ```
+
+All of the methods we tested for the classification models actually produced worse performance scores than our logistic regression baseline. We did preprocess the data differently in project 1 than we did here so that might have played a role in lower performance scores. Or perhaps logistic regression is a great model for the given data. I was hoping that the neural network would've been able to similarly model the logistic regression, but be more refined and better predict some of the areas in the data space where the logistic regression was inaccurate in. However, given the hyperparameters and architecture that we chose, that was not the case. I think a look into a better combination of hyperparameters might result in slightly better performance checks out of the neural network.
 
 ***
 \newpage
