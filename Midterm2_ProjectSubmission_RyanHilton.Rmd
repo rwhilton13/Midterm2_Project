@@ -930,6 +930,53 @@ With the reduced model the relative influence numbers are slightly different, bu
 ***
 - Part b.
 
+```{r}
+X_class = train.data[,c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17)]
+predictor.c = Predictor$new(boost.year, data = X_class, y = y2)
+summary.gbm(boost.year)
+plot(Partial$new(predictor.c, feature = "Term.GPA"))
+plot(Partial$new(predictor.c, feature = "HSGPA"))
+plot(Partial$new(predictor.c, feature = "SAT_Total"))
+```
+
+```{r}
+#importance analysis code for bagginf and random forests models had we chosen them
+
+#importance(bag.gpa)
+#varImpPlot(bag.gpa)
+#importance(forest.gpa)
+#varImpPlot(forest.gpa)
+```
+
+```{r}
+#partial dependence plots for variables with highest relative influence
+plot(boost.year ,i="Term.GPA")
+plot(boost.year ,i="HSGPA")
+plot(boost.year ,i="SAT_Total")
+```
+
+```{r}
+predictor.cR = Predictor$new(boost.yearR, data = X_class, y = y2)
+summary.gbm(boost.yearR)
+plot(Partial$new(predictor.c, feature = "Term.GPA"))
+plot(Partial$new(predictor.c, feature = "HSGPA"))
+plot(Partial$new(predictor.c, feature = "SAT_Total"))
+```
+
+```{r}
+#partial dependence plots for variables with highest relative influence
+plot(boost.yearR ,i="Term.GPA")
+plot(boost.yearR ,i="HSGPA")
+plot(boost.yearR ,i="SAT_Total")
+```
+
+Above we have partial dependence plots for the full and reduced model from the iml library and standard plot function. Here the predictors now include Term.GPA, which is considered our strongest predictor, and also HSGPA and SAT_Total once again are in the top three of predictors. The response, Persistence.NextYear is now categorical, so the shape of our curve is much more important than the values on the y-axis. Also the reduced model and full model give very similar results so the following explanations apply to both.
+
+Term.GPA has a positive correlation with persistence, and it is clear that this relationship is very important because the relative influence score for Term.GPA as found by the summary.gbm function is by far the largest of any predictor. 
+
+HSGPA has a similar relationship with persistence as it did with Term.GPA, one that is positive but also increases less drastically at higher values. Still it is clear though that as HSGPA increases, we can be more comfortable predicting a "yes" for persistence when integrating out all other variables.
+
+Also, once again, SAT_Total has very little relationship with the response, and if there is any then it is a negative one, which is unexpected because typically one might believe higher SAT grades would correlate to a stronger student that is more likely to be persistent. But, it seems our data tells us that there is no relationship, or, in fact, it is very slightly negative.
 
 ***
 
