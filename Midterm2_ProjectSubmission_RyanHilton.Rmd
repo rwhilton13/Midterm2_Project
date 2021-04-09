@@ -878,6 +878,54 @@ kable(b2.table, caption = "Test Accuracy and F1 Scores for Best Tree and Neural 
 
 - Part a.
 
+```{r}
+X_reg = train.data[,c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16)]
+predictor = Predictor$new(boost.gpa, data = X_reg, y = y1)
+summary.gbm(boost.gpa)
+plot(Partial$new(predictor, feature = "HSGPA"))
+plot(Partial$new(predictor, feature = "SAT_Total"))
+plot(Partial$new(predictor, feature = "Perc.Withd"))
+```
+
+```{r}
+#importance analysis code for bagging and random forests models had we chosen them
+
+#importance(bag.gpa)
+#varImpPlot(bag.gpa)
+#importance(forest.gpa)
+#varImpPlot(forest.gpa)
+```
+
+```{r}
+#partial dependence plots for variables with highest relative influence without iml library
+plot(boost.gpa ,i="HSGPA")
+plot(boost.gpa ,i="SAT_Total")
+plot(boost.gpa ,i="Perc.Withd")
+```
+
+Above we have 3 partial dependence plots (with the iml library and with the plot fn), one for each HSGPA, SAT_Total, and Perc.Withd. These variables were the deemed to have the 3 highest relative influence from the summary.gbm function applied to our full boosting model (reduced will be studied next). These plots illustrate the effect that the individual variables have on the Term.GPA according to our model, when considering only the variable plotted. 
+
+Thus, we can tell that HSGPA has a positive correlation with Term.GPA, however, as HSGPA increases (beyond the initial spike), the effect on Term.GPA becomes minimal. This makes sense that it was very effective in our classification tree model because a very low HSGPA indicates a low Term.GPA, but once HSGPA is greater than about 55, the Term.GPA stays relatively constant.
+
+Looking at the plot for SAT_Total against Term.GPA here, it is surprising that this variable was one of high influence. The plot doesn't indicate that SAT_Total has a correlation with Term.GPA besides (maybe) a slight negative one, which contradicts what one may expect. We hypothesize that this variable gains its influence and predictability with the presence of a different variable in the model, likely HSGPA.
+
+Lastly, the third strongest variable in terms of relative influence is Perc.Withd, but it is worth noting that the relative influence value is much smaller than the previous two and leads the rest of the pack by only a slight margin. When analyzing the partial dependence plot, the relationship is a little questionable, however there is some reasoning that can justify what we see, but it is worth noting this may be a stretch. It seems that a very low withdrawal percentage leads to a lower GPA (due to not withdrawing from difficult classes), then as withdrawal percentage increases so does the Term.GPA because the more difficult classes may have been withdrawn from. Continuing however, a large amount of withdrawals may indicate a weaker student, leading again to a low GPA, but an extremely high number of withdrawals means that very few classes are factored into Term.GPA, so it rises again. This reasoning was for the plot function, but with the iml library pdp, we see that Perc.Withd has no notable relationship with the response.
+
+```{r}
+predictorR = Predictor$new(boost.gpa, data = X_reg, y = y1)
+summary.gbm(boost.gpaR)
+plot(Partial$new(predictorR, feature = "HSGPA"))
+plot(Partial$new(predictorR, feature = "SAT_Total"))
+plot(Partial$new(predictorR, feature = "Perc.Withd"))
+```
+
+```{r}
+#partial dependence plots for variables with highest relative influence
+plot(boost.gpaR ,i="HSGPA")
+plot(boost.gpaR ,i="SAT_Total")
+plot(boost.gpaR ,i="Perc.Withd")
+```
+With the reduced model the relative influence numbers are slightly different, but the partial dependence plots look very similar so the analysis will be the same, which tells us that the excluded variables add little to nothing to the boosting model.
 
 ***
 - Part b.
